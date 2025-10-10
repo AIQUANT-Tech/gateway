@@ -1,0 +1,29 @@
+{
+  "currentBlock": 12345678,
+  "signature": "66f5f15d15124a77418cfa3ec0e72cc1d2295647e528a9ecb4636f9ed5342d06",
+  "txBlock": 12345670,
+  "txStatus": 1,
+  "fee": "168662",
+  "txData": {
+    "hash": "66f5f15d15124a77418cfa3ec0e72cc1d2295647e528a9ecb4636f9ed5342d06",
+    "blockHeight": 12345670,
+    "blockHash": "4a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
+    "status": 1,
+    "fees": "168662",
+    "timestamp": 1728456789,
+    "inputs": [
+      {
+        "address": "addr_test1vrvqa7ytgmptew2qy3ec0lqdk9n94vcgwu4wy07kqp2he0srll8mg",
+        "amount": "2000000",
+        "txHash": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+        "outputIndex": 0
+      }
+    ],
+    "outputs": [
+      {
+        "address": "addr_test1qz8fg4e5y6h7j8k9l0m1n2o3p4q5r6s7t8u9v0w1x2y3z4a5b6c7d8e9f0g1h2",
+        "amount": "1831338"
+      }
+    ]
+  }
+}

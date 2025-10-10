@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 
 import { Lucid, Blockfrost, UTxO, Network } from '@aiquant/lucid-cardano';
+import axios from 'axios';
 import fse from 'fs-extra';
 
 import { TokenService } from '#src/services/token-service';
@@ -18,6 +19,7 @@ import {
   TOKEN_NOT_SUPPORTED_ERROR_CODE,
   TOKEN_NOT_SUPPORTED_ERROR_MESSAGE,
   TransactionStatus,
+  ProtocolParams,
 } from './cardano.utils';
 
 export class Cardano {
@@ -443,6 +445,28 @@ export class Cardano {
       return splitTokenAddress === splitAddress;
     });
     return token;
+  }
+
+  /**
+   * Fetch current protocol parameters from Blockfrost
+   */
+  public async getProtocolParameters(): Promise<ProtocolParams> {
+    try {
+      const response = await axios.get(`${this.config.apiurl}/epochs/latest/parameters`, {
+        headers: { project_id: this.config.projectId },
+      });
+
+      return response.data;
+    } catch (error) {
+      logger.error(`Failed to fetch protocol params: ${error.message}`);
+      // Fallback to known mainnet values (as of 2024)
+      return {
+        min_fee_a: '44', // lovelace per byte
+        min_fee_b: '155381', // lovelace constant
+        price_mem: '0.0577', // lovelace per memory unit
+        price_steps: '0.0000721', // lovelace per step
+      };
+    }
   }
 
   async close() {

@@ -22,23 +22,17 @@ export const INSUFFICIENT_FUNDS_ERROR_CODE = 1019;
 export const GAS_LIMIT_EXCEEDED_ERROR_CODE = 1020;
 export const AMOUNT_LESS_THAN_MIN_AMOUNT_ERROR_CODE = 1021;
 
-export const NETWORK_ERROR_MESSAGE =
-  'Network error. Please check your node URL, API key, and Internet connection.';
-export const RATE_LIMIT_ERROR_MESSAGE =
-  'Blockchain node API rate limit exceeded.';
+export const NETWORK_ERROR_MESSAGE = 'Network error. Please check your node URL, API key, and Internet connection.';
+export const RATE_LIMIT_ERROR_MESSAGE = 'Blockchain node API rate limit exceeded.';
 export const LOAD_WALLET_ERROR_MESSAGE = 'Failed to load wallet: ';
 export const TOKEN_NOT_SUPPORTED_ERROR_MESSAGE = 'Token not supported: ';
 export const TRADE_FAILED_ERROR_MESSAGE = 'Trade query failed: ';
 export const INCOMPLETE_REQUEST_PARAM = 'Incomplete request parameters.';
 export const INVALID_NONCE_ERROR_MESSAGE = 'Invalid Nonce provided: ';
-export const AMOUNT_NOT_SUPPORTED_ERROR_MESSAGE =
-  'Amount provided in an unexpected format';
-export const ENDPOINT_NOT_SUPPORTED_ERROR_MESSAGE =
-  'Endpoint not supported by this chain/controller.';
-export const INSUFFICIENT_FUNDS_ERROR_MESSAGE =
-  'Insufficient funds for transaction.';
-export const GAS_LIMIT_EXCEEDED_ERROR_MESSAGE =
-  'Gas limit exceeded (gasWanted greater than gasLimitEstimate).';
+export const AMOUNT_NOT_SUPPORTED_ERROR_MESSAGE = 'Amount provided in an unexpected format';
+export const ENDPOINT_NOT_SUPPORTED_ERROR_MESSAGE = 'Endpoint not supported by this chain/controller.';
+export const INSUFFICIENT_FUNDS_ERROR_MESSAGE = 'Insufficient funds for transaction.';
+export const GAS_LIMIT_EXCEEDED_ERROR_MESSAGE = 'Gas limit exceeded (gasWanted greater than gasLimitEstimate).';
 export const AMOUNT_LESS_THAN_MIN_AMOUNT_ERROR_MESSAGE =
   'Calculated amount less than min amount provided with slippage. Maybe try increasing slippage. ';
 
@@ -66,3 +60,15 @@ export interface TransactionStatus {
 }
 
 export interface CardanoTokensResponseType {}
+
+export interface ProtocolParams {
+  min_fee_a: string; // Blockfrost returns as string
+  min_fee_b: string;
+  price_mem: string;
+  price_steps: string;
+}
+
+export interface ExecutionUnits {
+  mem: bigint;
+  steps: bigint;
+}

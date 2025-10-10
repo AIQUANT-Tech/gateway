@@ -4,10 +4,10 @@ import type { FastifyPluginAsync } from 'fastify';
 import { addLiquidityRoute as ammAddLiquidityRoute } from './amm-routes/addLiquidity';
 import { executeSwapRoute as ammExecuteSwapRoute } from './amm-routes/executeSwap';
 import { ammPoolInfoRoute } from './amm-routes/poolInfo';
+import { positionInfoRoute as ammPositionInfoRoute } from './amm-routes/positionInfo';
 import quoteLiquidityRoute from './amm-routes/quoteLiquidity';
 import { quoteSwapRoute as ammQuoteSwapRoute } from './amm-routes/quoteSwap';
 import { removeLiquidityRoute as ammRemoveLiquidityRoute } from './amm-routes/removeLiquidity';
-
 // AMM routes including swap endpoints
 const sundaeswapAmmRoutes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(sensible);
@@ -23,6 +23,7 @@ const sundaeswapAmmRoutes: FastifyPluginAsync = async (fastify) => {
     await instance.register(ammQuoteSwapRoute);
     await instance.register(quoteLiquidityRoute);
     await instance.register(ammExecuteSwapRoute);
+    await instance.register(ammPositionInfoRoute);
     await instance.register(ammAddLiquidityRoute);
     await instance.register(ammRemoveLiquidityRoute);
   });

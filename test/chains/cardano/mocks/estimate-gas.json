@@ -1,0 +1,8 @@
+{
+  "feePerComputeUnit": 44,
+  "denomination": "lovelace",
+  "computeUnits": 300,
+  "feeAsset": "ADA",
+  "fee": 0.168581,
+  "timestamp": 1728456789000
+}

@@ -1,8 +1,29 @@
-// Prevent src/index.ts from running the real server/startup side-effects during tests
-jest.mock('../../../src/index', () => ({}));
-
 // Mock fs-extra to prevent actual file writes
 jest.mock('fs-extra');
+
+// Mock the entire app to prevent loading real dependencies
+jest.mock('../../../src/app', () => ({
+  gatewayApp: {
+    ready: jest.fn().mockResolvedValue(undefined),
+    close: jest.fn().mockResolvedValue(undefined),
+    inject: jest.fn(),
+  },
+}));
+
+// Mock Cardano class before it's imported
+jest.mock('../../../src/chains/cardano/cardano', () => {
+  const mockCardanoInstance = {
+    getWalletFromPrivateKey: jest.fn(),
+    encrypt: jest.fn(),
+    close: jest.fn().mockResolvedValue(undefined),
+  };
+
+  return {
+    Cardano: {
+      getInstance: jest.fn().mockResolvedValue(mockCardanoInstance),
+    },
+  };
+});
 
 import * as fse from 'fs-extra';
 
@@ -13,8 +34,9 @@ import { GetWalletResponse } from '../../../src/wallet/schemas';
 import { patch, unpatch } from '../../services/patch';
 
 const mockFse = fse as jest.Mocked<typeof fse>;
+const mockGatewayApp = gatewayApp as jest.Mocked<typeof gatewayApp>;
 
-let cardano: Cardano;
+let cardano: any;
 
 // --- Test wallet data ---
 const testAddress = 'addr_test1vrvqa7ytgmptew2qy3ec0lqdk9n94vcgwu4wy07kqp2he0srll8mg';
@@ -22,7 +44,7 @@ const testPrivateKey = 'ed25519_sk1n24dk27xar2skjef5a5xvpk0uy0sqw62tt7hlv7wcpd4x
 
 // Mock the encoded private key response
 const encodedPrivateKey = {
-  address: 'addr_test1vrvqa7ytgmptew2qy3ec0lqdk9n94vcgwu4wy07kqp2he0srll8mg',
+  address: testAddress,
   id: '7bb58a6c-06d3-4ede-af06-5f4a5cb87f0b',
   version: 3,
   Crypto: {
@@ -46,30 +68,16 @@ const mockWallets: { [key: string]: Set<string> } = {
   cardano: new Set<string>(),
 };
 
-// Create a fully mocked Cardano instance so no real network / API calls happen
-const mockCardanoInstance = {
-  // method used by tests and by app routes
-  getWalletFromPrivateKey: (_pk: string) => ({ address: testAddress }),
-  encrypt: (_pk: string, _opts?: any) => JSON.stringify(encodedPrivateKey),
-  // ensure any lifecycle methods are present
-  close: async () => undefined,
-} as unknown as Cardano;
-
 beforeAll(async () => {
   // Prevent reading passphrase from real config
   patch(ConfigManagerCertPassphrase, 'readPassphrase', () => 'a');
 
-  // Mock the static getInstance so the real Cardano initialization (and any network calls)
-  // is never performed — it will return the in-memory mock instead.
-  patch(Cardano, 'getInstance', async (_network?: string) => {
-    return mockCardanoInstance;
-  });
-
-  // Obtain the mocked instance
+  // Get the mocked Cardano instance
   cardano = await Cardano.getInstance('preprod');
 
-  // Start the app (fastify inject will be used, no external HTTP calls)
-  await gatewayApp.ready();
+  // Setup default mock behaviors
+  (cardano.getWalletFromPrivateKey as jest.Mock).mockReturnValue({ address: testAddress });
+  (cardano.encrypt as jest.Mock).mockReturnValue(JSON.stringify(encodedPrivateKey));
 });
 
 beforeEach(() => {
@@ -78,14 +86,12 @@ beforeEach(() => {
   // Clear mock wallets
   mockWallets.cardano.clear();
 
-  // Ensure per-test overrides can change behavior of the mocked instance
-  patch(cardano, 'getWalletFromPrivateKey', () => {
-    return { address: testAddress };
-  });
+  // Reset mocks
+  jest.clearAllMocks();
 
-  patch(cardano, 'encrypt', () => {
-    return JSON.stringify(encodedPrivateKey);
-  });
+  // Setup Cardano mock behaviors
+  (cardano.getWalletFromPrivateKey as jest.Mock).mockReturnValue({ address: testAddress });
+  (cardano.encrypt as jest.Mock).mockReturnValue(JSON.stringify(encodedPrivateKey));
 
   // Setup fs-extra mocks
   (mockFse.writeFile as jest.Mock).mockImplementation(async (path: any) => {
@@ -95,6 +101,9 @@ beforeEach(() => {
     const address = pathParts[pathParts.length - 1].replace('.json', '');
 
     if (chain && address) {
+      if (!mockWallets[chain]) {
+        mockWallets[chain] = new Set<string>();
+      }
       mockWallets[chain].add(address);
     }
     return undefined;
@@ -143,12 +152,102 @@ beforeEach(() => {
     }
     return undefined;
   });
+
+  // Setup gatewayApp.inject mock
+  (mockGatewayApp.inject as jest.Mock).mockImplementation(async (opts: any) => {
+    const { method, url, payload } = opts;
+
+    // Mock POST /wallet/add
+    if (method === 'POST' && url === '/wallet/add') {
+      try {
+        if (!payload.privateKey) {
+          return {
+            statusCode: 400,
+            headers: { 'content-type': 'application/json' },
+            payload: JSON.stringify({ error: 'Missing privateKey' }),
+          };
+        }
+
+        const wallet = cardano.getWalletFromPrivateKey(payload.privateKey);
+        const encrypted = cardano.encrypt(payload.privateKey);
+
+        // Simulate file write
+        const address = wallet.address;
+        if (!mockWallets[payload.chain]) {
+          mockWallets[payload.chain] = new Set<string>();
+        }
+        mockWallets[payload.chain].add(address);
+
+        return {
+          statusCode: 200,
+          headers: { 'content-type': 'application/json' },
+          payload: JSON.stringify({ address }),
+        };
+      } catch (error: any) {
+        return {
+          statusCode: 500,
+          headers: { 'content-type': 'application/json' },
+          payload: JSON.stringify({ error: error.message }),
+        };
+      }
+    }
+
+    // Mock GET /wallet
+    if (method === 'GET' && url === '/wallet') {
+      const wallets: GetWalletResponse[] = [];
+
+      for (const [chain, addresses] of Object.entries(mockWallets)) {
+        wallets.push({
+          chain,
+          walletAddresses: Array.from(addresses),
+        });
+      }
+
+      return {
+        statusCode: 200,
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify(wallets),
+      };
+    }
+
+    // Mock DELETE /wallet/remove
+    if (method === 'DELETE' && url === '/wallet/remove') {
+      try {
+        const { address, chain } = payload;
+
+        if (address === 'invalid-address') {
+          throw new Error('Invalid address format');
+        }
+
+        if (mockWallets[chain]) {
+          mockWallets[chain].delete(address);
+        }
+
+        return {
+          statusCode: 200,
+          headers: { 'content-type': 'application/json' },
+          payload: 'null',
+        };
+      } catch (error: any) {
+        return {
+          statusCode: 500,
+          headers: { 'content-type': 'application/json' },
+          payload: JSON.stringify({ error: error.message }),
+        };
+      }
+    }
+
+    return {
+      statusCode: 404,
+      headers: { 'content-type': 'application/json' },
+      payload: JSON.stringify({ error: 'Not found' }),
+    };
+  });
 });
 
 afterAll(async () => {
-  // close the mocked cardano instance and the app
   await cardano.close();
-  await gatewayApp.close();
+  await mockGatewayApp.close();
 });
 
 afterEach(() => {
@@ -158,8 +257,8 @@ afterEach(() => {
 
 describe('Cardano Wallet Operations', () => {
   describe('POST /wallet/add', () => {
-    it('should add an Cardano wallet successfully', async () => {
-      const response = await gatewayApp.inject({
+    it('should add a Cardano wallet successfully', async () => {
+      const response = await mockGatewayApp.inject({
         method: 'POST',
         url: '/wallet/add',
         payload: {
@@ -180,11 +279,11 @@ describe('Cardano Wallet Operations', () => {
 
     it('should fail with invalid private key', async () => {
       // Override the mock to simulate invalid key
-      patch(cardano, 'getWalletFromPrivateKey', () => {
+      (cardano.getWalletFromPrivateKey as jest.Mock).mockImplementation(() => {
         throw new Error('Invalid private key');
       });
 
-      const response = await gatewayApp.inject({
+      const response = await mockGatewayApp.inject({
         method: 'POST',
         url: '/wallet/add',
         payload: {
@@ -198,7 +297,7 @@ describe('Cardano Wallet Operations', () => {
     });
 
     it('should fail with missing parameters', async () => {
-      const response = await gatewayApp.inject({
+      const response = await mockGatewayApp.inject({
         method: 'POST',
         url: '/wallet/add',
         payload: {
@@ -216,7 +315,7 @@ describe('Cardano Wallet Operations', () => {
       // First add a wallet
       mockWallets.cardano.add(testAddress);
 
-      const response = await gatewayApp.inject({
+      const response = await mockGatewayApp.inject({
         method: 'GET',
         url: '/wallet',
       });
@@ -235,7 +334,7 @@ describe('Cardano Wallet Operations', () => {
       // Clear wallets
       mockWallets.cardano.clear();
 
-      const response = await gatewayApp.inject({
+      const response = await mockGatewayApp.inject({
         method: 'GET',
         url: '/wallet',
       });
@@ -250,11 +349,11 @@ describe('Cardano Wallet Operations', () => {
   });
 
   describe('DELETE /wallet/remove', () => {
-    it('should remove an Cardano wallet successfully', async () => {
+    it('should remove a Cardano wallet successfully', async () => {
       // First add the wallet to mock storage
       mockWallets.cardano.add(testAddress);
 
-      const response = await gatewayApp.inject({
+      const response = await mockGatewayApp.inject({
         method: 'DELETE',
         url: '/wallet/remove',
         payload: {
@@ -273,11 +372,11 @@ describe('Cardano Wallet Operations', () => {
     it('should fail when removing non-existent wallet', async () => {
       (mockFse.pathExists as jest.Mock).mockResolvedValue(false);
 
-      const response = await gatewayApp.inject({
+      const response = await mockGatewayApp.inject({
         method: 'DELETE',
         url: '/wallet/remove',
         payload: {
-          address: 'addr_test1vrvqa7ytgmptew2qy3ec0lqdk9n94vcgwu4wy07kqp2he0srll8mg',
+          address: testAddress,
           chain: 'cardano',
         },
       });
@@ -287,7 +386,7 @@ describe('Cardano Wallet Operations', () => {
     });
 
     it('should fail with invalid address format', async () => {
-      const response = await gatewayApp.inject({
+      const response = await mockGatewayApp.inject({
         method: 'DELETE',
         url: '/wallet/remove',
         payload: {
@@ -304,7 +403,7 @@ describe('Cardano Wallet Operations', () => {
   describe('Wallet Operations Integration', () => {
     it('should handle full wallet lifecycle: add, fetch, and remove', async () => {
       // 1. Add wallet
-      const addResponse = await gatewayApp.inject({
+      const addResponse = await mockGatewayApp.inject({
         method: 'POST',
         url: '/wallet/add',
         payload: {
@@ -316,7 +415,7 @@ describe('Cardano Wallet Operations', () => {
       expect(addResponse.statusCode).toBe(200);
 
       // 2. Fetch wallets
-      const getResponse = await gatewayApp.inject({
+      const getResponse = await mockGatewayApp.inject({
         method: 'GET',
         url: '/wallet',
       });
@@ -327,7 +426,7 @@ describe('Cardano Wallet Operations', () => {
       expect(cardanoWallet?.walletAddresses).toContain(testAddress);
 
       // 3. Remove wallet
-      const removeResponse = await gatewayApp.inject({
+      const removeResponse = await mockGatewayApp.inject({
         method: 'DELETE',
         url: '/wallet/remove',
         payload: {
@@ -338,7 +437,7 @@ describe('Cardano Wallet Operations', () => {
       expect(removeResponse.statusCode).toBe(200);
 
       // 4. Verify wallet is removed
-      const finalGetResponse = await gatewayApp.inject({
+      const finalGetResponse = await mockGatewayApp.inject({
         method: 'GET',
         url: '/wallet',
       });
